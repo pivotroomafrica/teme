@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.p12
+*.p8
+*.key
+*.log
+*.tsbuildinfo
+.pgdata/
+.seed-output.json
