@@ -66,4 +66,16 @@ All aggregation is done by PostgreSQL with set-based queries, nothing is aggrega
 | Rewards unlocked                    | `reward_unlocks (merchant_id, unlocked_at)` _(added)_                                           |
 | Wallet update jobs                  | `outbox_jobs (merchant_id, type, created_at)` _(added)_                                         |
 
-There is no separate analytics database and no summary table yet. The "time between visits" and cohort queries are the heaviest (they look at history before the range for the cards that were active). **Measure before optimising:** if p95 latency for a large merchant exceeds roughly one second, the first step is a nightly per-merchant, per-day rollup table (`stamps`, `unique customers`, `redemptions`) fed from the ledger, which the overview and north-star can read; the ledger remains the source of truth.
+Measured on a synthetic dataset of **500,000 stamps / 50,000 memberships / 10 branches / 20 staff** for one merchant (local PostgreSQL 18, warm cache):
+
+| Query                                | 30-day range | 365-day range |
+| ------------------------------------ | ------------ | ------------- |
+| visits (stamps, active members)      | 0.11 s       | 0.50 s        |
+| returning customers (north-star)     | 0.58 s       | < 0.01 s      |
+| time between visits                  | 1.1 s        | 2.2 s         |
+| branch activity                      | 0.25 s       | 0.77 s        |
+| staff activity                       | 0.16 s       | 0.85 s        |
+| returning-customer list (first page) | 2.3 s        | 1.5 s         |
+| retention cohorts (12 months)        | 0.8 s        |               |
+
+The overview runs its queries in parallel, so a 30-day overview takes about the slowest query (about 1 s). The two slowest are the returning-customer list and time between visits; both scan one merchant's history. There is no separate analytics database and no summary table yet. The "time between visits" and cohort queries are the heaviest (they look at history before the range for the cards that were active). **Measure before optimising:** if p95 latency for a large merchant exceeds roughly one second, the first step is a nightly per-merchant, per-day rollup table (`stamps`, `unique customers`, `redemptions`) fed from the ledger, which the overview and north-star can read; the ledger remains the source of truth.

@@ -95,7 +95,7 @@ a native speaker. Cooldown rejections recorded by confirm feed the fraud indicat
 - Ten simultaneous requests with one key produce one stamp: the membership lock serialises them and the second lookup
   returns the first answer. A unique index `(staff_membership_id, operation, key)` and `stamp_events (staff_membership_id,
 idempotency_key)` are the final backstop.
-- Records live `IDEMPOTENCY_TTL_HOURS` (default 48); a cleanup job will purge them. They contain the customer's first
+- Records live `IDEMPOTENCY_TTL_HOURS` (default 48); a daily clean-up job purges them. They contain the customer's first
   name as shown on the scanner.
 
 ## Cooldown

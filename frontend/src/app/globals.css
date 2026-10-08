@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-on-primary: var(--on-primary);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+
+  --color-green-50: var(--tc-green-50);
+  --color-green-100: var(--tc-green-100);
+  --color-green-200: var(--tc-green-200);
+  --color-green-500: var(--tc-green-500);
+  --color-green-600: var(--tc-green-600);
+  --color-green-700: var(--tc-green-700);
+  --color-green-800: var(--tc-green-800);
+  --color-green-900: var(--tc-green-900);
+  --color-gold-100: var(--tc-gold-100);
+  --color-gold-300: var(--tc-gold-300);
+  --color-gold-500: var(--tc-gold-500);
+  --color-gold-600: var(--tc-gold-600);
+  --color-gold-text: var(--tc-gold-text);
+  --color-cream-50: var(--tc-cream-50);
+  --color-cream-100: var(--tc-cream-100);
+  --color-cream-200: var(--tc-cream-200);
+  --color-cream-300: var(--tc-cream-300);
+  --color-charcoal-900: var(--tc-charcoal-900);
+  --color-charcoal-700: var(--tc-charcoal-700);
+  --color-charcoal-600: var(--tc-charcoal-600);
+  --color-charcoal-500: var(--tc-charcoal-500);
+  --color-red-50: var(--tc-red-50);
+  --color-red-600: var(--tc-red-600);
+  --color-red-700: var(--tc-red-700);
+
+  /* Latin first, Ethiopic as the next face: the browser picks per character (and downloads only the
+     Ethiopic subset when Ethiopic text is on the page). */
+  --font-sans:
+    "Inter Variable", "Noto Sans Ethiopic Variable", system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.6;
+    /* Long Amharic words and merchant-provided text must wrap instead of clipping. */
+    overflow-wrap: break-word;
+    word-break: normal;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Ethiopic glyphs are taller and carry marks above and below the line: give them room. */
+  :lang(am) {
+    line-height: 1.8;
+  }
+
+  h1,
+  h2,
+  h3 {
+    line-height: 1.25;
+    text-wrap: balance;
+  }
+  :lang(am) h1,
+  :lang(am) h2,
+  :lang(am) h3 {
+    line-height: 1.4;
+  }
+
+  a {
+    color: var(--primary);
+    text-underline-offset: 0.2em;
+  }
+
+  /* Visible keyboard focus everywhere, never removed without a replacement. */
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  ::selection {
+    background: var(--tc-gold-300);
+    color: var(--tc-charcoal-900);
+  }
+}
+
+/* A component-level default, so a larger size utility on the same element (min-h-14) is allowed to win. */
+@layer components {
+  /* Minimum comfortable tap size for interactive controls used with one thumb. */
+  .touch-target {
+    min-height: var(--touch-target);
+    min-width: var(--touch-target);
+  }
+}
+
+@layer utilities {
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  /* A quiet woven-border motif inspired by Ethiopian textile borders (decorative only). */
+  .tc-border-pattern {
+    background-image:
+      linear-gradient(45deg, var(--tc-gold-500) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--tc-gold-500) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--tc-green-700) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--tc-green-700) 75%);
+    background-size: 12px 12px;
+    background-position:
+      0 0,
+      0 6px,
+      6px -6px,
+      -6px 0;
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Printing a poster: only the poster is printed, on A4, with no screen chrome or shadows. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  #poster-print,
+  #poster-print * {
+    visibility: visible !important;
+  }
+  #poster-print {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+  }
+}

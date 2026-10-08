@@ -76,6 +76,6 @@ address itself), `auth.logout`, `auth.logout_all`, `auth.refresh_reuse_detected`
 ## Operational notes
 
 - Rate-limit counters are in process memory. Run a shared store (Redis) before scaling beyond one instance.
-- When deployed behind a proxy, configure Express `trust proxy` so `req.ip` is the client address (done in the hardening step).
+- When deployed behind a proxy, set `TRUST_PROXY` to the number of proxies so `req.ip` is the client address.
 - Rotate `JWT_ACCESS_SECRET` by deploying a new value; all access tokens expire within `ACCESS_TOKEN_TTL_SECONDS`.
 - A user with several merchant memberships currently receives the earliest active one at login.

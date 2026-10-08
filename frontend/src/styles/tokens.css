@@ -1,0 +1,57 @@
+/*
+ * TemelashCard design tokens. Colours are chosen for contrast: body text on cream is > 12:1, white on the
+ * primary green is > 7:1, white on danger red is > 6:1. Gold is a fill colour for progress and rewards (use
+ * charcoal text on it); the "gold-text" shade is the only gold safe for text on cream.
+ * Red is reserved for destructive actions, invalid scans and fraud warnings.
+ */
+:root {
+  /* Brand */
+  --tc-green-50: #eaf5ef;
+  --tc-green-100: #cfe8da;
+  --tc-green-200: #a3d1b6;
+  --tc-green-500: #2e8b57;
+  --tc-green-600: #247347;
+  --tc-green-700: #1b5e3a;
+  --tc-green-800: #144a2e;
+  --tc-green-900: #0e3822;
+
+  --tc-gold-100: #fbf1d3;
+  --tc-gold-300: #f2d675;
+  --tc-gold-500: #d9a21b;
+  --tc-gold-600: #b8860b;
+  --tc-gold-text: #7a5600;
+
+  --tc-cream-50: #fffdf8;
+  --tc-cream-100: #fbf7ee;
+  --tc-cream-200: #f1ead8;
+  --tc-cream-300: #e3d9bd;
+
+  --tc-charcoal-900: #1e2321;
+  --tc-charcoal-700: #3a423e;
+  --tc-charcoal-600: #4b5551;
+  --tc-charcoal-500: #5e6762;
+  --tc-charcoal-300: #a9b0ac;
+
+  --tc-red-50: #fdecea;
+  --tc-red-600: #b3261e;
+  --tc-red-700: #8c1d18;
+
+  /* Semantic roles used by components (swap here to re-theme) */
+  --background: var(--tc-cream-100);
+  --surface: var(--tc-cream-50);
+  --foreground: var(--tc-charcoal-900);
+  --muted: var(--tc-charcoal-600);
+  --border: var(--tc-cream-300);
+  --primary: var(--tc-green-700);
+  --primary-hover: var(--tc-green-800);
+  --on-primary: #ffffff;
+  --accent: var(--tc-gold-500);
+  --danger: var(--tc-red-600);
+  --focus: var(--tc-green-700);
+
+  /* Layout */
+  --touch-target: 2.75rem; /* 44px: the minimum comfortable target for a thumb */
+  --radius-card: 1rem;
+  --radius-control: 0.75rem;
+  --content-width: 72rem;
+}
