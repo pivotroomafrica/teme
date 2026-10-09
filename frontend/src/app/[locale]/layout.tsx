@@ -2,6 +2,7 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/noto-sans-ethiopic";
 import "../globals.css";
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { AppProviders } from "@/components/providers/app-providers";
 import { publicEnv } from "@/lib/config/public-env";
@@ -45,6 +46,9 @@ export async function generateMetadata({ params }: Pick<Props, "params">): Promi
 
 export default async function RootLayout({ children, params }: Props) {
   const locale = assertLocale((await params).locale);
+  // Every page is rendered per request: the Content-Security-Policy carries a fresh nonce that Next.js must stamp on
+  // each page's scripts, which a prerendered (static) page cannot have. Reading the request headers opts in.
+  await headers();
   const messages = pickNamespaces(await getMessages(locale), [
     "common",
     "errors",

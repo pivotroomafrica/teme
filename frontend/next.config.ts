@@ -1,31 +1,10 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { API_CSP } from "./src/lib/security/csp";
 
 const isProd = process.env.NODE_ENV === "production";
 
-/**
- * Baseline Content-Security-Policy. Everything except scripts and styles is already strict. Next.js needs
- * inline bootstrap scripts, so `script-src` still allows 'unsafe-inline' for now; the hardening step replaces
- * this with a per-request nonce (which requires dynamic rendering, see the Next.js CSP guide).
- */
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "media-src 'self' blob:",
-  "font-src 'self'",
-  // The browser talks only to this origin; the backend is reached server-side or through the same-origin proxy.
-  `connect-src 'self'${isProd ? "" : " ws: wss:"}`,
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  ...(isProd ? ["upgrade-insecure-requests"] : []),
-].join("; ");
-
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -59,7 +38,12 @@ const nextConfig: NextConfig = {
     remotePatterns: [],
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    // Pages get their Content-Security-Policy (with a per-request nonce) from src/proxy.ts. The JSON API routes are
+    // never rendered, so they get the closed-down one here.
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      { source: "/api/:path*", headers: [{ key: "Content-Security-Policy", value: API_CSP }] },
+    ];
   },
 };
 

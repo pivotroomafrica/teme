@@ -1,4 +1,5 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { expectNoA11yViolations } from "@tests/helpers/axe";
@@ -195,5 +196,36 @@ describe("Toast", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(() => render(<ToastButton label="x" />)).toThrow(/ToastProvider/);
     spy.mockRestore();
+  });
+});
+
+describe("nested dialogs", () => {
+  it("closing an inner dialog does not close or block the dialog around it", async () => {
+    const outerClosed = vi.fn();
+    function Nested() {
+      const [inner, setInner] = useState(false);
+      return (
+        <>
+          <Dialog open onClose={outerClosed} title="Outer">
+            <button onClick={() => setInner(true)}>Open inner</button>
+            <Dialog open={inner} onClose={() => setInner(false)} title="Inner">
+              <p>Inside</p>
+            </Dialog>
+          </Dialog>
+        </>
+      );
+    }
+    const user = userEvent.setup();
+    renderUi(<Nested />);
+    await user.click(screen.getByRole("button", { name: "Open inner" }));
+    expect(await screen.findByRole("dialog", { name: "Inner" })).toBeInTheDocument();
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Inner" })).getByRole("button", { name: "Close" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Inner" })).not.toBeInTheDocument(),
+    );
+    expect(outerClosed).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Outer" })).toBeInTheDocument();
   });
 });

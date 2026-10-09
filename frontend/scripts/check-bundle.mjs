@@ -20,6 +20,14 @@ function walk(dir) {
   });
 }
 
+// The server build must not contain the mock backend either: a production build never talks to it, and the code is
+// removed at build time (see src/lib/api/server.ts).
+const SERVER_FORBIDDEN = [
+  ["mock backend credentials", "mock-password-1"],
+  ["mock accounts", "owner@mock.test"],
+  ["mock transport", "createMockTransport"],
+];
+
 const root = ".next/static";
 let files;
 try {
@@ -36,10 +44,23 @@ for (const file of files) {
     if (text.includes(needle)) problems.push(`${label} ("${needle}") found in ${file}`);
   }
 }
+let serverFiles = [];
+try {
+  serverFiles = walk(".next/server");
+} catch {
+  // A build without server output cannot be checked; the browser check above still ran.
+}
+for (const file of serverFiles) {
+  const text = readFileSync(file, "utf8");
+  for (const [label, needle] of SERVER_FORBIDDEN) {
+    if (text.includes(needle))
+      problems.push(`${label} ("${needle}") found in server build ${file}`);
+  }
+}
 if (problems.length) {
   console.error(problems.join("\n"));
   process.exit(1);
 }
 console.log(
-  `Checked ${files.length} browser bundles: no mock data or server configuration inside.`,
+  `Checked ${files.length} browser bundles and ${serverFiles.length} server files: no mock data or server configuration inside.`,
 );

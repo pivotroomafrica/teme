@@ -44,6 +44,8 @@ export const ROUTE_RULES: readonly RouteRule[] = [
   { path: "/dashboard/campaigns", area: "merchant", permission: "customer:manage" },
   { path: "/dashboard/analytics", area: "merchant", permission: "analytics:read" },
   { path: "/dashboard/audit", area: "merchant", permission: "audit:read" },
+  { path: "/dashboard/fraud", area: "merchant", permission: "fraud:read" },
+  { path: "/dashboard/privacy", area: "merchant", permission: "privacy:manage" },
   { path: "/dashboard/settings", area: "merchant", permission: "merchant:update" },
   { path: "/dashboard", area: "merchant", permission: "merchant:read" },
 
@@ -117,6 +119,8 @@ const NAV: Record<Area, NavItem[]> = {
     { id: "campaigns", href: "/dashboard/campaigns", labelKey: "nav.campaigns" },
     { id: "analytics", href: "/dashboard/analytics", labelKey: "nav.analytics" },
     { id: "audit", href: "/dashboard/audit", labelKey: "nav.audit" },
+    { id: "fraud", href: "/dashboard/fraud", labelKey: "nav.fraud" },
+    { id: "privacy", href: "/dashboard/privacy", labelKey: "nav.privacyData" },
     { id: "settings", href: "/dashboard/settings", labelKey: "nav.settings" },
   ],
   operations: [

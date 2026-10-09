@@ -39,6 +39,18 @@ export function createAuthApi(transport: Transport) {
     logoutAllDevices: (signal?: AbortSignal) =>
       transport.request<void>({ method: "POST", path: "/auth/logout-all", signal }),
 
+    /**
+     * A new team member sets a password with the one-time invitation code (204). Unknown, expired, revoked and used
+     * codes all answer the same 400 INVALID_INVITATION. Afterwards the person signs in normally.
+     */
+    acceptInvitation: (input: { token: string; password: string }, signal?: AbortSignal) =>
+      transport.request<void>({
+        method: "POST",
+        path: "/auth/invitations/accept",
+        body: input,
+        signal,
+      }),
+
     me: (signal?: AbortSignal) =>
       transport.request<Me>({
         method: "GET",

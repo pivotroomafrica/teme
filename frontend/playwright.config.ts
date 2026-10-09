@@ -20,13 +20,13 @@ export default defineConfig({
     {
       name: "mobile",
       testIgnore:
-        /(design-system|auth|enrollment|card|scanner|dashboard|program|team).spec.ts|warmup.setup.ts/,
+        /(design-system|auth|enrollment|card|scanner|dashboard|program|team|records|analytics|operations|hardening|merchant-tools).spec.ts|warmup.setup.ts/,
       use: { ...devices["Pixel 7"], baseURL: `http://localhost:${PROD_PORT}` },
     },
     {
       name: "desktop",
       testIgnore:
-        /(design-system|auth|enrollment|card|scanner|dashboard|program|team).spec.ts|warmup.setup.ts/,
+        /(design-system|auth|enrollment|card|scanner|dashboard|program|team|records|analytics|operations|hardening|merchant-tools).spec.ts|warmup.setup.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${PROD_PORT}` },
     },
     {
@@ -37,7 +37,8 @@ export default defineConfig({
     {
       name: "dev-mobile",
       dependencies: ["warmup"],
-      testMatch: /(design-system|auth|enrollment|card|scanner|dashboard|program|team).spec.ts/,
+      testMatch:
+        /(design-system|auth|enrollment|card|scanner|dashboard|program|team|records|analytics|operations|hardening|merchant-tools).spec.ts/,
       // 360 CSS px wide: the narrowest phone we support.
       use: {
         ...devices["Pixel 7"],
@@ -48,7 +49,8 @@ export default defineConfig({
     {
       name: "dev-desktop",
       dependencies: ["warmup"],
-      testMatch: /(design-system|auth|enrollment|card|scanner|dashboard|program|team).spec.ts/,
+      testMatch:
+        /(design-system|auth|enrollment|card|scanner|dashboard|program|team|records|analytics|operations|hardening|merchant-tools).spec.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${DEV_PORT}` },
     },
   ],

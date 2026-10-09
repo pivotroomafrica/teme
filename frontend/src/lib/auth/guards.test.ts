@@ -72,6 +72,17 @@ describe("resolveBffRoute", () => {
     expect(route("POST", "card/consent/marketing/withdraw")?.access).toBe("public");
   });
 
+  it("forwards only the invitation acceptance among the account routes", () => {
+    expect(route("POST", "auth/invitations/accept")).toEqual({
+      path: "/auth/invitations/accept",
+      access: "public",
+    });
+    expect(route("GET", "auth/invitations/accept")).toBeNull();
+    expect(route("POST", "auth/login")).toBeNull();
+    expect(route("POST", "auth/refresh")).toBeNull();
+    expect(route("POST", "auth/invitations/other")).toBeNull();
+  });
+
   it("forwards signed-in areas as private", () => {
     expect(route("POST", "scanner/stamps")).toEqual({ path: "/scanner/stamps", access: "private" });
     expect(
@@ -83,13 +94,7 @@ describe("resolveBffRoute", () => {
   });
 
   it("never proxies sign-in, refresh or sign-out, which have their own handlers", () => {
-    for (const path of [
-      "auth/login",
-      "auth/refresh",
-      "auth/logout",
-      "auth/logout-all",
-      "auth/invitations/accept",
-    ]) {
+    for (const path of ["auth/login", "auth/refresh", "auth/logout", "auth/logout-all"]) {
       expect(route("POST", path), path).toBeNull();
     }
   });

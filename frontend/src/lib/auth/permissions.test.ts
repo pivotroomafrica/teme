@@ -141,9 +141,14 @@ describe("navigation by role", () => {
       "campaigns",
       "analytics",
       "audit",
+      "fraud",
+      "privacy",
       "settings",
     ]);
-    expect(ids("merchant", manager)).toEqual(ids("merchant", owner));
+    // Managers read fraud flags but do not manage privacy (owners only).
+    expect(ids("merchant", manager)).toEqual(
+      ids("merchant", owner).filter((id) => id !== "privacy"),
+    );
   });
 
   it("shows branch staff nothing of the dashboard and the scanner entries only", () => {

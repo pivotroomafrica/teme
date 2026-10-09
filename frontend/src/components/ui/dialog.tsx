@@ -63,9 +63,13 @@ function Modal({
       ref={ref}
       aria-labelledby={titleId}
       aria-describedby={description ? descId : undefined}
-      onClose={onClose}
+      // React bubbles `close` and `cancel` through ITS tree, so a dialog nested inside another (a confirmation inside a
+      // drawer) would otherwise close or block its parent. Each dialog reacts only to its own events.
+      onClose={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
       onCancel={(event) => {
-        if (!dismissible) event.preventDefault();
+        if (event.target === event.currentTarget && !dismissible) event.preventDefault();
       }}
       onClick={(event) => {
         // A click on the backdrop targets the <dialog> element itself.

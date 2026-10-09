@@ -110,6 +110,17 @@ beforeEach(() => {
   useBackendDefaults();
 });
 
+describe("requests", () => {
+  it("asks the backend for each section exactly once", async () => {
+    show();
+    await screen.findByTestId("events-list");
+    await waitFor(() => expect(wallet).toHaveBeenCalled());
+    for (const call of [overview, monthlyReturning, branches, wallet, definitions, auditList]) {
+      expect(call).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
 describe("OverviewDashboard figures", () => {
   it("shows every headline metric exactly as the backend reported it", async () => {
     show();

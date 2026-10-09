@@ -5,10 +5,12 @@ import { SESSION_COOKIE, openSession } from "@/lib/auth/session-data";
 import { getServerEnv } from "@/lib/config/server-env";
 import { LOCALE_COOKIE } from "@/lib/i18n/config";
 import { resolveLocale, splitLocale } from "@/lib/i18n/resolve-locale";
+import { buildCsp, newNonce } from "@/lib/security/csp";
 
 /** Areas that must never appear in a search engine: they are private, per-user or per-card pages. */
 const PRIVATE_AREAS = [
   "/login",
+  "/accept-invitation",
   "/denied",
   "/session-expired",
   "/card",
@@ -70,7 +72,12 @@ export async function proxy(request: NextRequest) {
   // Pages read this to build links back to the current page. Set here, it replaces anything the client sent.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(PATH_HEADER, pathname + search);
+  // A fresh nonce per request. Next.js reads it from the request's policy and stamps it on its own scripts, so
+  // nothing else (injected markup, a stray inline script) can run. The same policy is sent to the browser.
+  const csp = buildCsp({ nonce: newNonce(), production: process.env.NODE_ENV === "production" });
+  requestHeaders.set("Content-Security-Policy", csp);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
 
   // Remember the last language the visitor actually used. A preference only: it carries no identity.
   if (request.cookies.get(LOCALE_COOKIE)?.value !== locale) {

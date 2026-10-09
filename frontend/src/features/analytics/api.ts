@@ -1,14 +1,18 @@
 import {
   analyticsOverviewSchema,
   branchActivityPageSchema,
+  cohortsSchema,
   metricDefinitionsSchema,
   monthlyReturningSchema,
   parseWith,
+  staffActivityPageSchema,
   walletHealthSchema,
   type AnalyticsOverview,
   type BranchActivityPage,
+  type Cohorts,
   type MetricDefinitions,
   type MonthlyReturning,
+  type StaffActivityPage,
   type WalletHealth,
 } from "@/lib/api/contract";
 import type { Transport } from "@/lib/api/http";
@@ -44,13 +48,40 @@ export function createAnalyticsApi(transport: Transport) {
         parse: parseWith(monthlyReturningSchema),
       }),
 
-    branches: (range: DateRange, input: { limit?: number } = {}, signal?: AbortSignal) =>
+    branches: (
+      range: DateRange,
+      input: { limit?: number; cursor?: string } = {},
+      signal?: AbortSignal,
+    ) =>
       transport.request<BranchActivityPage>({
         method: "GET",
         path: "/merchant/analytics/branches",
-        query: { from: range.from, to: range.to, limit: input.limit ?? 10 },
+        query: { from: range.from, to: range.to, limit: input.limit ?? 10, cursor: input.cursor },
         signal,
         parse: parseWith(branchActivityPageSchema),
+      }),
+
+    staff: (
+      range: DateRange,
+      input: { limit?: number; cursor?: string } = {},
+      signal?: AbortSignal,
+    ) =>
+      transport.request<StaffActivityPage>({
+        method: "GET",
+        path: "/merchant/analytics/staff",
+        query: { from: range.from, to: range.to, limit: input.limit ?? 10, cursor: input.cursor },
+        signal,
+        parse: parseWith(staffActivityPageSchema),
+      }),
+
+    /** Retention cohorts: members grouped by the month they joined (1 to 24 cohorts). */
+    cohorts: (input: { cohorts?: number } = {}, signal?: AbortSignal) =>
+      transport.request<Cohorts>({
+        method: "GET",
+        path: "/merchant/analytics/cohorts",
+        query: { cohorts: input.cohorts ?? 6 },
+        signal,
+        parse: parseWith(cohortsSchema),
       }),
 
     wallet: (range: DateRange, signal?: AbortSignal) =>

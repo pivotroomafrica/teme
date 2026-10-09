@@ -185,6 +185,8 @@ const NAV: Record<Role, string[]> = {
     "Campaigns",
     "Analytics",
     "Audit history",
+    "Fraud monitoring",
+    "Privacy and data",
     "Settings",
   ],
   manager: [
@@ -197,6 +199,7 @@ const NAV: Record<Role, string[]> = {
     "Campaigns",
     "Analytics",
     "Audit history",
+    "Fraud monitoring",
     "Settings",
   ],
   staff: ["Scanner", "Branch"],

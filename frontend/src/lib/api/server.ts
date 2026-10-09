@@ -22,7 +22,9 @@ export async function createServerTransport(options: ServerApiOptions = {}): Pro
   const env = getServerEnv();
   const getAccessToken = () => options.accessToken;
 
-  if (env.TC_API_MODE === "mock") {
+  // The guard on NODE_ENV is resolved at build time, so production builds contain no mock backend at all (the
+  // configuration also refuses mock mode in production, as a second barrier).
+  if (process.env.NODE_ENV !== "production" && env.TC_API_MODE === "mock") {
     const { createMockTransport } = await import("@/mocks/mock-transport");
     const { sharedMockState } = await import("@/mocks/shared-state");
     return createMockTransport({

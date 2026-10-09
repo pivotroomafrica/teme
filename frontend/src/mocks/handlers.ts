@@ -7,9 +7,58 @@
  * detail strings of validation errors, and the retry-after values below are plausible stand-ins.
  */
 import {
+  campaignsFor,
+  cancelCampaign,
+  createCampaign,
+  listCampaigns,
+  sendCampaign,
+  type CampaignStore,
+} from "./campaigns-data";
+import {
+  anonymize as anonymizeCustomer,
+  customerData,
+  getRetention,
+  invalidatePasses,
+  reissueCard,
+  resyncPass,
+  runRetention,
+  setMembershipStatus,
+  setRetention,
+  withdrawConsent,
+} from "./privacy-data";
+import {
+  evaluate as evaluateFraud,
+  fraudFor,
+  listFlags,
+  reviewFlag,
+  updateThresholds,
+  type FraudStore,
+} from "./fraud-data";
+import { profileFor, updateProfile, type ProfileStore } from "./settings-data";
+import {
+  deadJobs,
+  listMerchants,
+  opsFor,
+  outboxStats,
+  platformAudit,
+  requeueDead,
+  type OpsStores,
+} from "./ops-data";
+import {
+  auditList,
+  listCustomers,
+  membershipLedger,
+  membershipPasses,
+  membershipSummary,
+  recordsFor,
+  reverse,
+  type RecordsStore,
+} from "./records-data";
+import {
   MOCK_DEFINITIONS,
-  auditFor,
   branchesFor,
+  cohortsFor,
+  staffFor,
   monthlyReturningFor,
   overviewFor,
   resolveMockRange,
@@ -17,6 +66,7 @@ import {
 } from "./analytics-data";
 import type { MockContext, MockReply, MockRoute } from "./mock-transport";
 import {
+  acceptInvitation,
   changeRole,
   createBranch,
   inviteStaff,
@@ -41,7 +91,6 @@ import {
   MOCK_ACCOUNTS,
   MOCK_BRANCHES,
   MOCK_CONSENT_VERSION,
-  MOCK_CUSTOMERS,
   MOCK_JOIN_INFO,
   MOCK_PASSWORD,
   REJECTION_MESSAGES,
@@ -76,6 +125,16 @@ export interface MockState {
   programs: ProgramStore;
   /** Branches and team per mock account (see org-data.ts). */
   orgs: OrgStore;
+  /** Customers, ledgers and audit history per mock account (see records-data.ts). */
+  records: RecordsStore;
+  /** Platform operations data (see ops-data.ts). */
+  ops: OpsStores;
+  /** Business profile per mock account (see settings-data.ts). */
+  profiles: ProfileStore;
+  /** Fraud flags and thresholds per mock account (see fraud-data.ts). */
+  fraud: FraudStore;
+  /** Proposed campaigns per mock account (see campaigns-data.ts). */
+  campaigns: CampaignStore;
   nextCard: number;
 }
 
@@ -90,6 +149,11 @@ export function createMockState(): MockState {
     cardLoads: new Map(),
     programs: new Map(),
     orgs: new Map(),
+    records: new Map(),
+    ops: new Map(),
+    profiles: new Map(),
+    fraud: new Map(),
+    campaigns: new Map(),
     nextCard: 1,
   };
 }
@@ -117,6 +181,7 @@ const error = (
 });
 const ok = (body: unknown): MockReply => ({ status: 200, body });
 const noContent = (): MockReply => ({ status: 204 });
+const fromReply = (reply: { status: number; body: unknown }): MockReply => reply;
 
 const isMockEmail = (value: unknown): value is MockEmail =>
   typeof value === "string" && value in MOCK_ACCOUNTS;
@@ -499,6 +564,31 @@ export function createHandlers(): MockRoute[] {
     })),
     {
       method: "GET",
+      path: "/merchant/analytics/staff",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "analytics:read");
+        if ("reply" in auth) return auth.reply;
+        const range = resolveMockRange(ctx.query);
+        if (!range.ok) {
+          return error(400, "VALIDATION_FAILED", "Request validation failed.", [range.message]);
+        }
+        return ok(staffFor(range, ctx.query));
+      },
+    },
+    {
+      method: "GET",
+      path: "/merchant/analytics/cohorts",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "analytics:read");
+        if ("reply" in auth) return auth.reply;
+        const result = cohortsFor(ctx.query);
+        return "error" in result
+          ? error(400, "VALIDATION_FAILED", "Request validation failed.", [result.error])
+          : ok(result);
+      },
+    },
+    {
+      method: "GET",
       path: "/merchant/analytics/monthly-returning-customers",
       handle: (ctx) => {
         const auth = authenticate(ctx, "analytics:read");
@@ -523,44 +613,381 @@ export function createHandlers(): MockRoute[] {
       handle: (ctx) => {
         const auth = authenticate(ctx, "audit:read");
         if ("reply" in auth) return auth.reply;
-        const limit = Math.min(Math.max(Number(ctx.query.limit ?? 25) || 25, 1), 100);
-        return ok(auditFor(limit));
+        return fromReply(
+          auditList(
+            recordsFor(ctx.state.records, auth.email),
+            ctx.query,
+            MOCK_ACCOUNTS[auth.email].role === "OWNER",
+          ),
+        );
       },
     },
 
-    // ───────── Customers (read-only search, as branch staff see it) ─────────
+    {
+      method: "POST",
+      path: "/auth/invitations/accept",
+      handle: (ctx) => acceptInvitation(ctx.state.orgs, ctx.body),
+    },
+
+    // ───────── Privacy and customer card tools (see privacy-data.ts) ─────────
+    {
+      method: "GET",
+      path: "/merchant/customers/{customerId}/data",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "privacy:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return customerData(records, String(ctx.params.customerId));
+      },
+    },
+    {
+      method: "GET",
+      path: "/merchant/customers/{customerId}/export",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "privacy:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return customerData(records, String(ctx.params.customerId));
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/customers/{customerId}/anonymize",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "privacy:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return anonymizeCustomer(records, String(ctx.params.customerId), ctx.body);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/customers/{customerId}/consents/marketing/withdraw",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return withdrawConsent(records, auth.email, String(ctx.params.customerId));
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/memberships/{membershipId}/deactivate",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return setMembershipStatus(records, String(ctx.params.membershipId), false);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/memberships/{membershipId}/reactivate",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return setMembershipStatus(records, String(ctx.params.membershipId), true);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/memberships/{membershipId}/reissue-card",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return reissueCard(records, String(ctx.params.membershipId));
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/memberships/{membershipId}/wallet-passes/invalidate",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return invalidatePasses(records, String(ctx.params.membershipId));
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/wallet-passes/{passId}/resync",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return resyncPass(records, String(ctx.params.passId));
+      },
+    },
+    {
+      method: "GET",
+      path: "/merchant/privacy/retention",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "privacy:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return getRetention(records);
+      },
+    },
+    {
+      method: "PUT",
+      path: "/merchant/privacy/retention",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "privacy:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return setRetention(records, ctx.body);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/privacy/retention/run",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "privacy:manage");
+        if ("reply" in auth) return auth.reply;
+        const records = recordsFor(ctx.state.records, auth.email);
+        return runRetention(records);
+      },
+    },
+
+    // ───────── Campaigns: PROPOSED operations, mock only (see campaigns-data.ts) ─────────
+    {
+      method: "GET",
+      path: "/merchant/campaigns",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const data = campaignsFor(ctx.state.campaigns, auth.email);
+        return listCampaigns(data, ctx.query);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/campaigns",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const data = campaignsFor(ctx.state.campaigns, auth.email);
+        return createCampaign(data, recordsFor(ctx.state.records, auth.email), ctx.body);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/campaigns/{campaignId}/send",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const data = campaignsFor(ctx.state.campaigns, auth.email);
+        return sendCampaign(data, String(ctx.params.campaignId), ctx.idempotencyKey);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/campaigns/{campaignId}/cancel",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:manage");
+        if ("reply" in auth) return auth.reply;
+        const data = campaignsFor(ctx.state.campaigns, auth.email);
+        return cancelCampaign(data, String(ctx.params.campaignId));
+      },
+    },
+
+    // ───────── Fraud monitoring (see fraud-data.ts) ─────────
+    {
+      method: "GET",
+      path: "/merchant/fraud/flags",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "fraud:read");
+        return "reply" in auth
+          ? auth.reply
+          : listFlags(fraudFor(ctx.state.fraud, auth.email), ctx.query);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/fraud/flags/{flagId}/review",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "fraud:manage");
+        if ("reply" in auth) return auth.reply;
+        return reviewFlag(
+          fraudFor(ctx.state.fraud, auth.email),
+          String(ctx.params.flagId),
+          ctx.body,
+        );
+      },
+    },
+    {
+      method: "GET",
+      path: "/merchant/fraud/settings",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "fraud:read");
+        return "reply" in auth ? auth.reply : ok(fraudFor(ctx.state.fraud, auth.email).thresholds);
+      },
+    },
+    {
+      method: "PUT",
+      path: "/merchant/fraud/settings",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "fraud:manage");
+        if ("reply" in auth) return auth.reply;
+        return updateThresholds(fraudFor(ctx.state.fraud, auth.email), ctx.body);
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/fraud/evaluate",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "fraud:manage");
+        return "reply" in auth ? auth.reply : evaluateFraud(fraudFor(ctx.state.fraud, auth.email));
+      },
+    },
+
+    // ───────── Platform operations (platform administrators only) and health ─────────
+    {
+      method: "GET",
+      path: "/platform/merchants",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "platform:manage");
+        return "reply" in auth ? auth.reply : listMerchants(opsFor(ctx.state.ops, auth.email));
+      },
+    },
+    {
+      method: "GET",
+      path: "/platform/outbox/stats",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "platform:manage");
+        return "reply" in auth ? auth.reply : outboxStats(opsFor(ctx.state.ops, auth.email));
+      },
+    },
+    {
+      method: "GET",
+      path: "/platform/outbox/dead",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "platform:manage");
+        return "reply" in auth ? auth.reply : deadJobs(opsFor(ctx.state.ops, auth.email));
+      },
+    },
+    {
+      method: "POST",
+      path: "/platform/outbox/dead/{jobId}/requeue",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "platform:manage");
+        if ("reply" in auth) return auth.reply;
+        return requeueDead(opsFor(ctx.state.ops, auth.email), String(ctx.params.jobId));
+      },
+    },
+    {
+      method: "GET",
+      path: "/platform/audit",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "platform:audit:read");
+        if ("reply" in auth) return auth.reply;
+        return platformAudit(opsFor(ctx.state.ops, auth.email), ctx.query);
+      },
+    },
+    {
+      method: "GET",
+      path: "/health",
+      handle: () => ok({ status: "ok", timestamp: new Date().toISOString() }),
+    },
+    {
+      method: "GET",
+      path: "/health/ready",
+      handle: () => ok({ status: "ok", info: { database: { status: "up" } } }),
+    },
+
+    // ───────── Customers, rewards and reversals (see records-data.ts) ─────────
     {
       method: "GET",
       path: "/merchant/customers",
       handle: (ctx) => {
         const auth = authenticate(ctx, "customer:read");
         if ("reply" in auth) return auth.reply;
-        const raw = typeof ctx.query.q === "string" ? ctx.query.q.replace(/[\s-]/g, "") : "";
-        const national = raw.replace(/^(?:\+?251|0)/, "");
-        // Branch staff must give the complete number; the answer never reveals anything for a partial one.
-        const found = MOCK_CUSTOMERS.filter(
-          (c) => national.length === 9 && c.phone.endsWith(national),
+        const canManage = (MOCK_ACCOUNTS[auth.email].permissions as readonly string[]).includes(
+          "customer:manage",
         );
-        return ok({
-          items: found.map((c) => ({
-            id: c.id,
-            firstName: c.firstName,
-            phone: `+251${c.phone.slice(0, 1)}•••••${c.phone.slice(-3)}`,
-            phoneMasked: true,
-            preferredLanguage: "EN",
-            joinedAt: "2026-09-01T08:00:00.000Z",
-            marketingConsent: false,
-            memberships: [
-              {
-                id: `${c.id}-m`,
-                programId: "00000000-0000-4000-8000-0000000d0001",
-                status: c.active ? "ACTIVE" : "INACTIVE",
-                joinedAt: "2026-09-01T08:00:00.000Z",
-              },
-            ],
-          })),
-          nextCursor: null,
-        });
+        return fromReply(
+          listCustomers(recordsFor(ctx.state.records, auth.email), ctx.query, canManage),
+        );
+      },
+    },
+    {
+      method: "GET",
+      path: "/merchant/memberships/{membershipId}/rewards",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:read");
+        if ("reply" in auth) return auth.reply;
+        return fromReply(
+          membershipSummary(
+            recordsFor(ctx.state.records, auth.email),
+            String(ctx.params.membershipId),
+          ),
+        );
+      },
+    },
+    {
+      method: "GET",
+      path: "/merchant/memberships/{membershipId}/ledger",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "reversal:create");
+        if ("reply" in auth) return auth.reply;
+        return fromReply(
+          membershipLedger(
+            recordsFor(ctx.state.records, auth.email),
+            String(ctx.params.membershipId),
+          ),
+        );
+      },
+    },
+    {
+      method: "GET",
+      path: "/merchant/memberships/{membershipId}/wallet-passes",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "customer:read");
+        if ("reply" in auth) return auth.reply;
+        return fromReply(
+          membershipPasses(
+            recordsFor(ctx.state.records, auth.email),
+            String(ctx.params.membershipId),
+          ),
+        );
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/stamps/{stampId}/reverse",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "reversal:create");
+        if ("reply" in auth) return auth.reply;
+        return fromReply(
+          reverse(
+            recordsFor(ctx.state.records, auth.email),
+            auth.email,
+            "STAMP",
+            String(ctx.params.stampId),
+            ctx.body,
+            ctx.idempotencyKey,
+          ),
+        );
+      },
+    },
+    {
+      method: "POST",
+      path: "/merchant/redemptions/{redemptionId}/reverse",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "reversal:create");
+        if ("reply" in auth) return auth.reply;
+        return fromReply(
+          reverse(
+            recordsFor(ctx.state.records, auth.email),
+            auth.email,
+            "REDEMPTION",
+            String(ctx.params.redemptionId),
+            ctx.body,
+            ctx.idempotencyKey,
+          ),
+        );
       },
     },
 
@@ -701,12 +1128,16 @@ export function createHandlers(): MockRoute[] {
       handle: (ctx) => {
         const auth = authenticate(ctx, "merchant:read");
         if ("reply" in auth) return auth.reply;
-        return ok({
-          nameEn: MOCK_JOIN_INFO.merchant.nameEn,
-          nameAm: MOCK_JOIN_INFO.merchant.nameAm,
-          timezone: "Africa/Addis_Ababa",
-          joinReference: "sample-cafe",
-        });
+        return ok(profileFor(ctx.state.profiles, auth.email));
+      },
+    },
+    {
+      method: "PATCH",
+      path: "/merchant/profile",
+      handle: (ctx) => {
+        const auth = authenticate(ctx, "merchant:update");
+        if ("reply" in auth) return auth.reply;
+        return updateProfile(profileFor(ctx.state.profiles, auth.email), ctx.body);
       },
     },
 

@@ -228,6 +228,15 @@ export const merchantProfileSchema = z.object({
   timezone: z.string().default("Africa/Addis_Ababa"),
   /** Public reference used in customer join links (not an internal identifier). */
   joinReference: z.string().optional(),
+  // The rest is what the settings screen edits; the shells above need none of it.
+  slug: z.string().optional(),
+  status: z.enum(["ACTIVE", "SUSPENDED", "DEACTIVATED"]).optional(),
+  defaultLanguage: z.enum(["EN", "AM"]).optional(),
+  supportEmail: nullableString.optional(),
+  supportPhone: nullableString.optional(),
+  /** Metadata only: the service has no file storage yet, so a logo cannot actually be uploaded. */
+  logo: z.object({ storageKey: z.string(), contentType: z.string() }).nullish(),
+  programDefaults: z.object({ stampsRequired: z.number(), cooldownMinutes: z.number() }).optional(),
 });
 export type MerchantProfile = z.infer<typeof merchantProfileSchema>;
 
@@ -364,6 +373,9 @@ export const auditPageSchema = z.object({
       branchId: nullableString,
       targetType: nullableString,
       targetId: nullableString,
+      requestId: nullableString.optional(),
+      /** Safe metadata only, already cleaned by the backend; the screen filters it again before showing it. */
+      metadata: z.record(z.string(), z.unknown()).nullish(),
     }),
   ),
   nextCursor: z.string().nullable(),
@@ -480,3 +492,330 @@ export const staffActivitySchema = z.object({
   }),
 });
 export type StaffActivity = z.infer<typeof staffActivitySchema>;
+
+// ───────────────────────── Memberships, rewards, ledger, wallet passes, reversals (OPENAPI-GAP: no response bodies) ─────────────────────────
+// Shapes follow backend/docs/rewards-and-reversals.md and the backend services.
+
+export const REWARD_STATES = ["AVAILABLE", "REDEEMED", "EXPIRED", "REVERSED"] as const;
+export type RewardState = (typeof REWARD_STATES)[number];
+
+export const membershipSummarySchema = z.object({
+  membershipId: z.string(),
+  status: z.string(),
+  effectiveStamps: z.number(),
+  progress: z.object({
+    current: z.number(),
+    required: z.number(),
+    remaining: z.number(),
+    completedCards: z.number(),
+  }),
+  rewards: z.array(
+    z.object({
+      id: z.string(),
+      state: z.enum(REWARD_STATES),
+      unlockedAt: z.string(),
+      expiresAt: nullableString,
+      nameEn: z.string(),
+      nameAm: nullableString,
+      descriptionEn: nullableString,
+      descriptionAm: nullableString,
+      redemptionAttempts: z.number(),
+      redemption: z.object({ id: z.string(), occurredAt: z.string() }).nullable(),
+    }),
+  ),
+});
+export type MembershipSummary = z.infer<typeof membershipSummarySchema>;
+
+export const ledgerEntrySchema = z.object({
+  type: z.enum(["STAMP", "REDEMPTION", "REVERSAL"]),
+  id: z.string(),
+  occurredAt: z.string(),
+  branchId: z.string().optional(),
+  staffMembershipId: z.string(),
+  /** STAMP and REDEMPTION: a compensating reversal exists. The original row itself is never changed. */
+  reversed: z.boolean().optional(),
+  rewardUnlockId: z.string().optional(),
+  reversal: z
+    .object({
+      targetType: z.enum(["STAMP", "REDEMPTION"]),
+      targetId: z.string(),
+      reason: z.string(),
+    })
+    .optional(),
+});
+export type LedgerEntry = z.infer<typeof ledgerEntrySchema>;
+
+export const ledgerSchema = z.object({
+  summary: membershipSummarySchema,
+  entries: z.array(ledgerEntrySchema),
+});
+export type Ledger = z.infer<typeof ledgerSchema>;
+
+export const walletPassSchema = z.object({
+  id: z.string(),
+  provider: z.enum(["APPLE", "GOOGLE", "WEB"]),
+  status: z.enum(["PENDING", "ACTIVE", "SUSPENDED", "INVALIDATED"]),
+  syncStatus: z.enum(["PENDING", "SYNCED", "FAILED"]),
+  passVersion: z.number(),
+  lastSyncedVersion: z.number(),
+  lastSyncedAt: nullableString,
+});
+export type WalletPass = z.infer<typeof walletPassSchema>;
+export const walletPassListSchema = z.array(walletPassSchema);
+
+export const reversalResultSchema = z.object({
+  reversalId: z.string(),
+  target: z.enum(["STAMP", "REDEMPTION"]),
+  targetId: z.string(),
+  occurredAt: z.string(),
+  progress: z.record(z.string(), z.number()),
+  replayed: z.boolean(),
+});
+export type ReversalResult = z.infer<typeof reversalResultSchema>;
+
+// ───────────────────────── Staff activity and retention cohorts (OPENAPI-GAP: no response bodies in the spec) ─────────────────────────
+// Shapes follow backend/src/modules/analytics/application/analytics.service.ts. Loyalty activity only: no money fields.
+
+export const staffActivityPageSchema = z.object({
+  range: analyticsRangeSchema,
+  items: z.array(
+    z.object({
+      staffId: z.string(),
+      displayName: z.string(),
+      role: z.string(),
+      status: z.string(),
+      stamps: z.number(),
+      stampsReversed: z.number(),
+      reversalRate: ratio,
+      uniqueCustomers: z.number(),
+      redemptions: z.number(),
+    }),
+  ),
+  nextCursor: z.string().nullable(),
+});
+export type StaffActivityPage = z.infer<typeof staffActivityPageSchema>;
+
+export const cohortsSchema = z.object({
+  timeZone: z.string(),
+  programId: nullableString,
+  cohorts: z.array(
+    z.object({
+      /** Local calendar month the members joined, YYYY-MM. */
+      cohortMonth: z.string(),
+      size: z.number(),
+      /** Month 0 is the joining month; months that have not happened yet are not listed. */
+      retention: z.array(z.object({ monthOffset: z.number(), retained: z.number(), rate: ratio })),
+    }),
+  ),
+});
+export type Cohorts = z.infer<typeof cohortsSchema>;
+
+// ───────────────────────── Platform operations (OPENAPI-GAP: the spec has no response bodies) ─────────────────────────
+// Shapes follow backend/src/modules/merchants/api/platform-merchants.controller.ts, jobs/api/outbox-admin.controller.ts
+// and docs/operations.md. Organisation-level data only: no customer data is reachable from these routes.
+
+export const MERCHANT_STATUSES = ["ACTIVE", "SUSPENDED", "DEACTIVATED"] as const;
+
+export const platformMerchantSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  nameEn: z.string(),
+  nameAm: nullableString,
+  status: z.enum(MERCHANT_STATUSES),
+});
+export type PlatformMerchant = z.infer<typeof platformMerchantSchema>;
+export const platformMerchantListSchema = z.array(platformMerchantSchema);
+
+/** Job counts by status, e.g. { PENDING: 0, COMPLETED: 10, FAILED: 1, DEAD: 0 }. Only statuses that exist are present. */
+export const outboxStatsSchema = z.record(z.string(), z.number());
+export type OutboxStats = z.infer<typeof outboxStatsSchema>;
+
+export const deadJobSchema = z.object({
+  id: z.string(),
+  merchantId: nullableString,
+  type: z.string(),
+  aggregateType: nullableString,
+  aggregateId: nullableString,
+  attempts: z.number(),
+  /** Already scrubbed of credentials by the backend; the screen cleans it again before showing it. */
+  lastError: nullableString,
+  createdAt: z.string(),
+});
+export type DeadJob = z.infer<typeof deadJobSchema>;
+export const deadJobListSchema = z.array(deadJobSchema);
+
+export const healthSchema = z.object({ status: z.string() }).passthrough();
+export type Health = z.infer<typeof healthSchema>;
+
+// ───────────────────────── Fraud monitoring (OPENAPI-GAP for settings and evaluate responses) ─────────────────────────
+// Shapes follow backend/src/modules/fraud. Indicators only FLAG things for a person to review: nothing is blocked.
+
+export const FRAUD_INDICATORS = [
+  "EXCESSIVE_STAMPS_BY_STAFF",
+  "REPEATED_SCANS_FOR_MEMBERSHIP",
+  "UNUSUAL_BRANCH_ACTIVITY",
+  "HIGH_REVERSAL_RATE",
+  "REPEATED_COOLDOWN_REJECTIONS",
+  "EXCESSIVE_REDEMPTIONS",
+] as const;
+export type FraudIndicator = (typeof FRAUD_INDICATORS)[number];
+export const FLAG_STATUSES = ["OPEN", "DISMISSED", "CONFIRMED"] as const;
+
+export const fraudFlagSchema = z.object({
+  id: z.string(),
+  indicator: z.enum(FRAUD_INDICATORS),
+  subjectType: z.enum(["STAFF", "MEMBERSHIP", "BRANCH"]),
+  subjectId: z.string(),
+  /** Staff name, branch name or customer first name. */
+  subjectLabel: nullableString,
+  windowStart: z.string(),
+  windowEnd: z.string(),
+  /** What was measured: a count, or a 0-1 ratio for HIGH_REVERSAL_RATE. */
+  observed: z.number(),
+  /** The limit it exceeded. */
+  threshold: z.number(),
+  /** Counts behind the flag. Contains no personal data. */
+  details: z.record(z.string(), z.unknown()).default({}),
+  status: z.enum(FLAG_STATUSES),
+  reviewedAt: nullableString,
+  reviewNote: nullableString,
+  createdAt: z.string(),
+});
+export type FraudFlag = z.infer<typeof fraudFlagSchema>;
+
+export const fraudFlagPageSchema = z.object({
+  items: z.array(fraudFlagSchema),
+  nextCursor: z.string().nullable(),
+});
+export type FraudFlagPage = z.infer<typeof fraudFlagPageSchema>;
+
+/** { indicatorKey: { enabled, ...numbers } }, defaults merged with the merchant's own values. */
+export const fraudThresholdsSchema = z.record(
+  z.string(),
+  z.record(z.string(), z.union([z.boolean(), z.number()])),
+);
+export type FraudThresholds = z.infer<typeof fraudThresholdsSchema>;
+
+export const fraudEvaluationSchema = z.record(z.string(), z.unknown());
+
+// ───────────────────────── Privacy and customer card tools (OPENAPI-GAP: no response bodies in the spec) ─────────────────────────
+// Shapes follow backend/src/modules/privacy and memberships.
+
+export const ANONYMIZATION_REASONS = [
+  "CUSTOMER_REQUEST",
+  "RETENTION_POLICY",
+  "LEGAL_OBLIGATION",
+  "OTHER",
+] as const;
+
+export const retentionPolicySchema = z.object({ inactiveCustomerMonths: z.number() });
+export type RetentionPolicy = z.infer<typeof retentionPolicySchema>;
+
+export const retentionRunSchema = z.object({ anonymized: z.number(), more: z.boolean() });
+export type RetentionRun = z.infer<typeof retentionRunSchema>;
+
+export const anonymizeResultSchema = z.object({
+  customerId: z.string(),
+  anonymized: z.boolean(),
+  membershipsClosed: z.number(),
+});
+export type AnonymizeResult = z.infer<typeof anonymizeResultSchema>;
+
+/** Everything stored about one customer at one merchant (the same shape as the portable export). */
+export const customerDataSchema = z
+  .object({
+    schemaVersion: z.number(),
+    exportedAt: z.string(),
+    merchant: z.object({ name: z.string() }),
+    customer: z.object({
+      id: z.string(),
+      firstName: nullableString,
+      phone: nullableString,
+      preferredLanguage: z.string(),
+      status: z.string(),
+      createdAt: z.string().nullable(),
+      anonymizedAt: nullableString,
+    }),
+    consents: z.array(
+      z.object({
+        type: z.string(),
+        action: z.string(),
+        version: z.string(),
+        source: z.string(),
+        occurredAt: z.string().nullable(),
+      }),
+    ),
+    memberships: z.array(
+      z.object({
+        id: z.string(),
+        status: z.string(),
+        joinedAt: z.string().nullable(),
+        deactivatedAt: nullableString,
+        program: z.object({ nameEn: z.string(), nameAm: nullableString }),
+        walletPasses: z.array(
+          z.object({ provider: z.string(), status: z.string(), createdAt: z.string().nullable() }),
+        ),
+        stamps: z.array(
+          z.object({
+            id: z.string(),
+            occurredAt: z.string().nullable(),
+            branchName: z.string(),
+            reversed: z.boolean(),
+          }),
+        ),
+        redemptions: z.array(
+          z.object({
+            id: z.string(),
+            occurredAt: z.string().nullable(),
+            branchName: z.string(),
+            reversed: z.boolean(),
+          }),
+        ),
+        reversals: z.array(
+          z.object({
+            occurredAt: z.string().nullable(),
+            targetType: z.string(),
+            reason: z.string(),
+          }),
+        ),
+        rewardUnlocks: z.array(
+          z.object({ unlockedAt: z.string().nullable(), expiresAt: nullableString }),
+        ),
+        truncated: z.boolean().optional(),
+      }),
+    ),
+  })
+  .passthrough();
+export type CustomerData = z.infer<typeof customerDataSchema>;
+
+export const reissuedCardSchema = z.object({ token: z.string() });
+export const invalidatedPassesSchema = z.object({ invalidated: z.number() });
+
+// ───────────────────────── Campaigns (PROPOSED: not in the backend OpenAPI document) ─────────────────────────
+// The backend has no campaign operations yet. These shapes are a proposal for what it should offer, built and tested
+// against the mock backend only. The screen says so, and in a production build (no mock) every call is refused with
+// a 404, which the screen shows as "not available yet".
+
+export const CAMPAIGN_AUDIENCES = ["ALL_OPTED_IN", "INACTIVE_30_DAYS", "NEAR_REWARD"] as const;
+export const CAMPAIGN_STATUSES = ["DRAFT", "SENT", "CANCELLED"] as const;
+
+export const campaignSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  messageEn: z.string(),
+  messageAm: nullableString,
+  /** Only customers who agreed to marketing are ever included, whichever audience is chosen. */
+  audience: z.enum(CAMPAIGN_AUDIENCES),
+  audienceSize: z.number(),
+  status: z.enum(CAMPAIGN_STATUSES),
+  createdAt: z.string(),
+  sentAt: nullableString,
+  replayed: z.boolean().optional(),
+});
+export type Campaign = z.infer<typeof campaignSchema>;
+
+export const campaignPageSchema = z.object({
+  items: z.array(campaignSchema),
+  nextCursor: z.string().nullable(),
+});
+export type CampaignPage = z.infer<typeof campaignPageSchema>;

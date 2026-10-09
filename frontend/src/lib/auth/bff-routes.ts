@@ -30,6 +30,8 @@ const RULES: Rule[] = [
   rule("POST", "card/web", "public"),
   rule("POST", "card/wallet/links", "public"),
   rule("POST", "card/consent/marketing/withdraw", "public"),
+  // A new team member sets a password with the one-time code they were given. No session exists yet.
+  rule("POST", "auth/invitations/accept", "public"),
 
   // Signed-in areas. (Sign-in, refresh and sign-out have their own handlers and are NOT proxied.)
   rule("GET", "auth/me", "private"),

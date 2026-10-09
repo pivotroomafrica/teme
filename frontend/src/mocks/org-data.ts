@@ -17,6 +17,8 @@ export type Reply = { status: number; body: unknown };
 export interface Org {
   branches: Branch[];
   staff: Staff[];
+  /** One-time invitation codes that can still be accepted, by the person they were issued for. */
+  invitations?: Map<string, string>;
 }
 export type OrgStore = Map<string, Org>;
 
@@ -289,7 +291,9 @@ export function inviteStaff(org: Org, email: MockEmail, body: unknown): Reply {
     branchIds: ids,
   };
   org.staff.push(staff);
-  return { status: 201, body: { staff, invitation: { token: token(), expiresAt: expires() } } };
+  const code = token();
+  (org.invitations ??= new Map()).set(code, staff.id);
+  return { status: 201, body: { staff, invitation: { token: code, expiresAt: expires() } } };
 }
 
 export function reissueInvitation(org: Org, email: MockEmail, id: string): Reply {
@@ -298,7 +302,12 @@ export function reissueInvitation(org: Org, email: MockEmail, id: string): Reply
   const refused = refuse(actorOf(email), target);
   if (refused) return refused;
   if (target.status !== "INVITED") return err(409, "CONFLICT", "Member is not in INVITED status.");
-  return { status: 201, body: { token: token(), expiresAt: expires() } };
+  // A new code replaces every earlier one for this person.
+  const invitations = (org.invitations ??= new Map());
+  for (const [code, staffId] of invitations) if (staffId === id) invitations.delete(code);
+  const code = token();
+  invitations.set(code, id);
+  return { status: 201, body: { token: code, expiresAt: expires() } };
 }
 
 export function changeRole(org: Org, email: MockEmail, id: string, body: unknown): Reply {
@@ -421,4 +430,39 @@ export function staffActivity(
       events: { items: events, nextCursor: next < total ? String(next) : null },
     },
   };
+}
+
+/**
+ * Accepting an invitation (public route): the code works once; unknown, replaced and used codes all answer the same
+ * 400 INVALID_INVITATION; a weak password is a validation error. The person becomes ACTIVE and can sign in.
+ */
+export function acceptInvitation(orgs: OrgStore, body: unknown): Reply {
+  const record = isRecord(body) ? body : {};
+  const code = typeof record.token === "string" ? record.token : "";
+  const password = typeof record.password === "string" ? record.password : "";
+  if (!code || !password) {
+    return err(400, "VALIDATION_FAILED", "Request validation failed.", [
+      "token and password are required",
+    ]);
+  }
+  if (
+    password.length < 12 ||
+    password.length > 128 ||
+    !/\p{L}/u.test(password) ||
+    !/\d/.test(password)
+  ) {
+    return err(400, "VALIDATION_FAILED", "Request validation failed.", [
+      "password must be 12-128 characters with a letter and a digit",
+    ]);
+  }
+  for (const org of orgs.values()) {
+    const staffId = org.invitations?.get(code);
+    if (!staffId) continue;
+    const person = org.staff.find((s) => s.id === staffId);
+    org.invitations!.delete(code);
+    if (!person || person.status !== "INVITED") break;
+    person.status = "ACTIVE";
+    return { status: 204, body: undefined };
+  }
+  return err(400, "INVALID_INVITATION", "This invitation is not valid.");
 }

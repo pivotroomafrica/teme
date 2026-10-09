@@ -357,7 +357,7 @@ test.describe("manual fallback", () => {
     await page.getByRole("button", { name: "Look up" }).first().click();
     const results = page.getByTestId("lookup-results");
     await expect(results).toContainText("Abebe");
-    await expect(results).toContainText("•••");
+    await expect(results).toContainText("*****111");
     await expect(results).toContainText("scan its code");
     expect(stamps).toBe(0);
   });

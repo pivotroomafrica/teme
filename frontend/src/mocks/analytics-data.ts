@@ -2,8 +2,10 @@ import type {
   AnalyticsOverview,
   AuditPage,
   BranchActivityPage,
+  Cohorts,
   MetricDefinitions,
   MonthlyReturning,
+  StaffActivityPage,
   WalletHealth,
 } from "@/lib/api/contract";
 import { MOCK_BRANCHES } from "./fixtures";
@@ -137,6 +139,79 @@ export function branchesFor(range: Extract<RangeResult, { ok: true }>): BranchAc
     redemptions: empty ? 0 : range.days * (1 + (i === 0 ? 1 : 0)),
   }));
   return { range: describe(range), items, nextCursor: null };
+}
+
+const STAFF_NAMES = [
+  "Selam Cashier",
+  "Dawit Manager",
+  "Hana Owner",
+  "Yonas Barista",
+  "Meron Server",
+  "Kebede Host",
+  "Liya Cashier",
+  "Eyob Runner",
+  "Saba Barista",
+  "Girma Cashier",
+  "Aster Server",
+  "Nahom Host",
+];
+
+/** Staff stamping activity, most stamps first, keyset-paged by position like the backend's opaque cursor. */
+export function staffFor(
+  range: Extract<RangeResult, { ok: true }>,
+  query: Record<string, unknown> = {},
+): StaffActivityPage {
+  const empty = quiet(range);
+  const limit = Math.min(Math.max(Number(query.limit ?? 25) || 25, 1), 100);
+  const offset =
+    typeof query.cursor === "string" && /^\d+$/.test(query.cursor) ? Number(query.cursor) : 0;
+  const all = STAFF_NAMES.map((displayName, i) => {
+    const stamps = empty ? 0 : Math.max(1, range.days * (12 - i));
+    const reversed = empty ? 0 : i % 4 === 0 ? Math.ceil(stamps / 10) : 0;
+    return {
+      staffId: `00000000-0000-4000-8000-0000000c${String(100 + i).padStart(4, "0")}`,
+      displayName,
+      role: i === 1 ? "MANAGER" : i === 2 ? "OWNER" : "STAFF",
+      status: i === 11 ? "DEACTIVATED" : "ACTIVE",
+      stamps,
+      stampsReversed: reversed,
+      reversalRate: ratio(reversed, stamps + reversed),
+      uniqueCustomers: empty ? 0 : Math.max(1, Math.round(stamps * 0.6)),
+      redemptions: empty ? 0 : Math.max(0, 6 - Math.floor(i / 2)),
+    };
+  });
+  const items = all.slice(offset, offset + limit);
+  const next = offset + items.length;
+  return { range: describe(range), items, nextCursor: next < all.length ? String(next) : null };
+}
+
+/** Retention cohorts by local join month. Months that have not happened yet are not listed. */
+export function cohortsFor(
+  query: Record<string, unknown>,
+  now = Date.now(),
+): Cohorts | { error: string } {
+  const count = query.cohorts === undefined ? 6 : Number(query.cohorts);
+  if (!Number.isInteger(count) || count < 1 || count > 24) {
+    return { error: "cohorts must be between 1 and 24." };
+  }
+  const current = mockToday(now).slice(0, 7);
+  const index = (m: string) => +m.slice(0, 4) * 12 + (+m.slice(5, 7) - 1);
+  const label = (i: number) => `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
+  const cohorts = Array.from({ length: count }, (_, n) => {
+    const month = label(index(current) - (count - 1) + n);
+    const elapsed = Math.min(index(current) - index(month), 12);
+    const size = 40 + ((n * 13) % 30);
+    return {
+      cohortMonth: month,
+      size,
+      retention: Array.from({ length: elapsed + 1 }, (_, k) => {
+        const retained =
+          k === 0 ? Math.round(size * 0.9) : Math.max(1, Math.round(size * 0.6 * 0.85 ** k));
+        return { monthOffset: k, retained, rate: ratio(retained, size) };
+      }),
+    };
+  });
+  return { timeZone: TIME_ZONE, programId: null, cohorts };
 }
 
 export function walletFor(range: Extract<RangeResult, { ok: true }>): WalletHealth {
